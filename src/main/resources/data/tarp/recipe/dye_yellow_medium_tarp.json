@@ -1,0 +1,61 @@
+{
+ "type": "minecraft:crafting_shapeless",
+ "category": "misc",
+ "group": "tarp_medium_dye",
+ "ingredients": [
+  {
+   "tag": "c:dyes/yellow"
+  },
+  [
+   {
+    "item": "tarp:white_medium_tarp"
+   },
+   {
+    "item": "tarp:orange_medium_tarp"
+   },
+   {
+    "item": "tarp:magenta_medium_tarp"
+   },
+   {
+    "item": "tarp:light_blue_medium_tarp"
+   },
+   {
+    "item": "tarp:lime_medium_tarp"
+   },
+   {
+    "item": "tarp:pink_medium_tarp"
+   },
+   {
+    "item": "tarp:gray_medium_tarp"
+   },
+   {
+    "item": "tarp:light_gray_medium_tarp"
+   },
+   {
+    "item": "tarp:cyan_medium_tarp"
+   },
+   {
+    "item": "tarp:purple_medium_tarp"
+   },
+   {
+    "item": "tarp:blue_medium_tarp"
+   },
+   {
+    "item": "tarp:brown_medium_tarp"
+   },
+   {
+    "item": "tarp:green_medium_tarp"
+   },
+   {
+    "item": "tarp:red_medium_tarp"
+   },
+   {
+    "item": "tarp:black_medium_tarp"
+   }
+  ]
+ ],
+ "result": {
+  "id": "tarp:yellow_medium_tarp",
+  "count": 1
+ }
+}

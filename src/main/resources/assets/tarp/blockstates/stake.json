@@ -1,0 +1,8 @@
+{"variants":{
+ "facing=up":{"model":"tarp:block/stake"},
+ "facing=down":{"model":"tarp:block/stake","x":180},
+ "facing=north":{"model":"tarp:block/stake","x":90},
+ "facing=south":{"model":"tarp:block/stake","x":90,"y":180},
+ "facing=east":{"model":"tarp:block/stake","x":90,"y":90},
+ "facing=west":{"model":"tarp:block/stake","x":90,"y":270}
+}}

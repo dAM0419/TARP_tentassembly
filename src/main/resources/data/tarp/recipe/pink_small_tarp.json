@@ -1,0 +1,22 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "group": "tarp_small",
+ "pattern": [
+  "WW ",
+  "WW ",
+  "  H"
+ ],
+ "key": {
+  "W": {
+   "item": "minecraft:pink_wool"
+  },
+  "H": {
+   "item": "minecraft:honeycomb"
+  }
+ },
+ "result": {
+  "id": "tarp:pink_small_tarp",
+  "count": 1
+ }
+}

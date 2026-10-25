@@ -1,0 +1,22 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "group": "tarp_large",
+ "pattern": [
+  "T",
+  "S",
+  "T"
+ ],
+ "key": {
+  "T": {
+   "item": "tarp:magenta_medium_tarp"
+  },
+  "S": {
+   "item": "minecraft:string"
+  }
+ },
+ "result": {
+  "id": "tarp:magenta_large_tarp",
+  "count": 1
+ }
+}

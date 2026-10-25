@@ -1,0 +1,1 @@
+{"parent": "minecraft:item/generated", "textures": {"layer0": "tarp:item/leaf_cover", "layer1": "tarp:item/leaf_cover_twine"}}

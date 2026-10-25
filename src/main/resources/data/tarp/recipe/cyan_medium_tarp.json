@@ -1,0 +1,22 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "group": "tarp_medium",
+ "pattern": [
+  "T",
+  "S",
+  "T"
+ ],
+ "key": {
+  "T": {
+   "item": "tarp:cyan_small_tarp"
+  },
+  "S": {
+   "item": "minecraft:string"
+  }
+ },
+ "result": {
+  "id": "tarp:cyan_medium_tarp",
+  "count": 1
+ }
+}

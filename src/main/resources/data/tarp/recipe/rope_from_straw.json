@@ -1,0 +1,1 @@
+{"neoforge:conditions":[{"type":"neoforge:mod_loaded","modid":"farmersdelight"}],"type":"minecraft:crafting_shaped","category":"misc","group":"tarp_rope","pattern":["S","S","S"],"key":{"S":{"item":"farmersdelight:straw"}},"result":{"id":"tarp:rope","count":3}}

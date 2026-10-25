@@ -1,0 +1,21 @@
+{
+ "type": "minecraft:crafting_shaped",
+ "category": "misc",
+ "group": "tarp_leaf_cover",
+ "pattern": [
+  "LL",
+  "LL"
+ ],
+ "key": {
+  "L": {
+   "item": "minecraft:oak_leaves"
+  }
+ },
+ "result": {
+  "id": "tarp:leaf_cover",
+  "count": 1,
+  "components": {
+   "tarp:leaf": "minecraft:oak_leaves"
+  }
+ }
+}

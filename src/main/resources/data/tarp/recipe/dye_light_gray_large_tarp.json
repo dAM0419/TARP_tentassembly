@@ -1,0 +1,61 @@
+{
+ "type": "minecraft:crafting_shapeless",
+ "category": "misc",
+ "group": "tarp_large_dye",
+ "ingredients": [
+  {
+   "tag": "c:dyes/light_gray"
+  },
+  [
+   {
+    "item": "tarp:white_large_tarp"
+   },
+   {
+    "item": "tarp:orange_large_tarp"
+   },
+   {
+    "item": "tarp:magenta_large_tarp"
+   },
+   {
+    "item": "tarp:light_blue_large_tarp"
+   },
+   {
+    "item": "tarp:yellow_large_tarp"
+   },
+   {
+    "item": "tarp:lime_large_tarp"
+   },
+   {
+    "item": "tarp:pink_large_tarp"
+   },
+   {
+    "item": "tarp:gray_large_tarp"
+   },
+   {
+    "item": "tarp:cyan_large_tarp"
+   },
+   {
+    "item": "tarp:purple_large_tarp"
+   },
+   {
+    "item": "tarp:blue_large_tarp"
+   },
+   {
+    "item": "tarp:brown_large_tarp"
+   },
+   {
+    "item": "tarp:green_large_tarp"
+   },
+   {
+    "item": "tarp:red_large_tarp"
+   },
+   {
+    "item": "tarp:black_large_tarp"
+   }
+  ]
+ ],
+ "result": {
+  "id": "tarp:light_gray_large_tarp",
+  "count": 1
+ }
+}
