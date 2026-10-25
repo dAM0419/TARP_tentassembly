@@ -89,7 +89,9 @@ public final class ToolController {
         long now = mc.level == null ? 0 : mc.level.getGameTime();
         if (info == null) {
             lastInfo = null;
-        } else if (!info.equals(lastInfo) && now - serverMsgAt > 20 || now - lastInfoAt >= 40) {
+        } else if (now - serverMsgAt > 30) {
+            // 0.4.9: 매 틱 다시 띄운다 (0.3.x 방식). 0.4.0 의 "바뀔 때·2초마다만"은 다른 출처의 행동바 문구에
+            // 덮이면 최대 2초 안 보였고, 지지대 개수 안내가 사라진 것처럼 보였다. 우리 서버 결과 문구만 1.5초 비켜 준다.
             mc.player.displayClientMessage(info, true);
             lastInfo = info;
             lastInfoAt = now;
