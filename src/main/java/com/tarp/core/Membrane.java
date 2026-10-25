@@ -86,13 +86,41 @@ public final class Membrane {
         /** 수평 위치의 막 윗면 높이 (위를 향한 면 중 가장 높은 것), 없으면 NaN. */
         public double height(double x, double z) {
             double best = Double.NaN;
-            for (Hull3.Face f : faces) {
+            double[] fb = bounds();
+            for (int i = 0; i < faces.size(); i++) {
+                Hull3.Face f = faces.get(i);
                 if (f.n().y() < 1e-4) continue;
+                // 0.4.10: 수평 상자 밖이면 다각형 판정 전에 건너뛴다 (입구 판정이 이 함수를 수천 번 부른다)
+                if (x < fb[4 * i] - 1e-7 || x > fb[4 * i + 1] + 1e-7 || z < fb[4 * i + 2] - 1e-7 || z > fb[4 * i + 3] + 1e-7) continue;
                 if (!insideXZ(f.poly(), x, z)) continue;
                 double y = (f.d() - f.n().x() * x - f.n().z() * z) / f.n().y();
                 if (Double.isNaN(best) || y > best) best = y;
             }
             return best;
+        }
+
+        private double[] faceBounds;
+
+        /** 면마다 수평 상자 {minX, maxX, minZ, maxZ}. */
+        private double[] bounds() {
+            if (faceBounds == null || faceBounds.length != faces.size() * 4) {
+                double[] b = new double[faces.size() * 4];
+                for (int i = 0; i < faces.size(); i++) {
+                    double x0 = Double.MAX_VALUE, x1 = -Double.MAX_VALUE, z0 = Double.MAX_VALUE, z1 = -Double.MAX_VALUE;
+                    for (V3 p : faces.get(i).poly()) {
+                        x0 = Math.min(x0, p.x());
+                        x1 = Math.max(x1, p.x());
+                        z0 = Math.min(z0, p.z());
+                        z1 = Math.max(z1, p.z());
+                    }
+                    b[4 * i] = x0;
+                    b[4 * i + 1] = x1;
+                    b[4 * i + 2] = z0;
+                    b[4 * i + 3] = z1;
+                }
+                faceBounds = b;
+            }
+            return faceBounds;
         }
 
         public boolean insidePoly(double x, double z) {

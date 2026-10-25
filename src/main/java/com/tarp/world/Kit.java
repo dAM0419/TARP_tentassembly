@@ -26,10 +26,8 @@ import net.minecraft.world.level.block.state.BlockState;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 /**
@@ -155,11 +153,10 @@ public final class Kit {
             BlockPos sup = pos.relative(worldFacing(s).getOpposite());
             if (!StakeBlock.canHold(level.getBlockState(sup))) bad.add(sup);
         }
-        Membrane.Result r = shape();
-        if (r.ok()) {
-            for (Map.Entry<Long, Long> me : Planner.masks(r, null, false).entrySet()) {
-                long cell = me.getKey();
-                BlockPos p = BlockPos.of(cell);
+        if (relShape().ok()) {
+            BlockPos o = BlockPos.containing(origin.x(), origin.y(), origin.z());
+            for (long cell : relCells()) {
+                BlockPos p = BlockPos.of(cell).offset(o);
                 BlockState st = level.getBlockState(p);
                 if (st.isAir() || st.canBeReplaced() || Planner.ours(st)) continue;
                 bad.add(p);
@@ -172,12 +169,45 @@ public final class Kit {
         return BlockPos.containing(p.x(), p.y() - 0.01, p.z());
     }
 
-    /** 투영용 막 모양 (실제 설치는 Planner.planTarp 로 다시 검증한다). */
-    public Membrane.Result shape() {
-        List<Membrane.Obstacle> obs = new ArrayList<>();
-        for (PoleBp p : poles) obs.add(new Membrane.Obstacle(world(p.a()), world(p.b()), Spec.POLE_CLEAR, true));
-        for (RopeBp r : ropes) obs.add(new Membrane.Obstacle(world(r.a()), world(r.b()), Spec.ROPE_CLEAR, false));
-        return Membrane.compute(worldTies(), obs);
+    /** 상대 막 모양의 기준점: 칸 (0,0,0) 의 가로 가운데·바닥. 실제 기준점은 언제나 여기서 정수 칸만큼 옮긴 곳이다. */
+    public static final V3 REL_ORIGIN = new V3(0.5, 0, 0.5);
+
+    private transient Membrane.Result relShape;
+    private transient long[] relCells;
+    private transient int relRot = -1;
+
+    /**
+     * 투영용 막 모양 (실제 설치는 Planner.planTarp 로 다시 검증한다). 0.4.10: 기준점 REL_ORIGIN 에서 회전마다 한 번만 구한다.
+     * 기준점은 정수 칸 단위로만 움직이므로 실제 모양은 이것을 (origin − REL_ORIGIN) 만큼 옮긴 것이다.
+     * 전엔 투영 기준 칸이 바뀔 때마다 막을 두 번(모양·바닥 판정) 새로 계산했다.
+     */
+    public Membrane.Result relShape() {
+        if (relShape == null || relRot != rot) {
+            V3 o = origin;
+            origin = REL_ORIGIN;
+            try {
+                List<Membrane.Obstacle> obs = new ArrayList<>();
+                for (PoleBp p : poles) obs.add(new Membrane.Obstacle(world(p.a()), world(p.b()), Spec.POLE_CLEAR, true));
+                for (RopeBp r : ropes) obs.add(new Membrane.Obstacle(world(r.a()), world(r.b()), Spec.ROPE_CLEAR, false));
+                relShape = Membrane.compute(worldTies(), obs);
+            } finally {
+                origin = o;
+            }
+            relCells = relShape.ok() ? Planner.masks(relShape, null, false).keySet().toLongArray() : new long[0];
+            relRot = rot;
+        }
+        return relShape;
+    }
+
+    /** relShape 의 천 칸 (REL_ORIGIN 기준). */
+    public long[] relCells() {
+        relShape();
+        return relCells;
+    }
+
+    /** 실제 모양까지의 평행이동 (정수 칸). */
+    public V3 relOffset() {
+        return origin.sub(REL_ORIGIN);
     }
 
     // ------------------------------------------------------------------ 저장
@@ -566,9 +596,4 @@ public final class Kit {
         return new int[]{p, stakes.size(), r};
     }
 
-    static Set<Long> keys(List<BlockPos> ps) {
-        Set<Long> out = new HashSet<>();
-        for (BlockPos p : ps) out.add(p.asLong());
-        return out;
-    }
 }

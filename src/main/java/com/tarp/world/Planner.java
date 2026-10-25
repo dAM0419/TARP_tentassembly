@@ -12,6 +12,7 @@ import com.tarp.core.Raster;
 import com.tarp.core.Spec;
 import com.tarp.core.Stability;
 import com.tarp.core.V3;
+import it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.state.BlockState;
@@ -168,8 +169,7 @@ public final class Planner {
         plan.needSize = Spec.sizeFor(plan.area);
         for (int e = 0; e < plan.shape.edges.length && !plan.doorPossible; e++)
             if (Door.plan(plan.shape, e, plan.obstacles).ok()) plan.doorPossible = true;
-        for (Map.Entry<Long, Long> me : masks(plan.shape, null, false).entrySet()) {
-            long cell = me.getKey();
+        for (long cell : masks(plan.shape, null, false).keySet()) {
             BlockPos p = BlockPos.of(cell);
             BlockState st = level.getBlockState(p);
             if (st.isAir() || st.canBeReplaced() || st.getBlock() instanceof PoleCellBlock || st.getBlock() instanceof StakeBlock
@@ -215,6 +215,9 @@ public final class Planner {
             plan.obstacles.add(new Membrane.Obstacle(seg[0], seg[1], Spec.POLE_CLEAR, true));
         }
         for (Stability.Rope r : s.ropes.values()) {
+            // 0.4.10: 다각형 상자(+0.3) 밖 노끈은 샘플링하지 않는다 (전엔 차원의 모든 노끈 × 33점)
+            if (Math.max(r.a().x(), r.b().x()) < minX - 0.3 || Math.min(r.a().x(), r.b().x()) > maxX + 0.3) continue;
+            if (Math.max(r.a().z(), r.b().z()) < minZ - 0.3 || Math.min(r.a().z(), r.b().z()) > maxZ + 0.3) continue;
             boolean over = false;
             for (int i = 0; i <= 32 && !over; i++) {
                 V3 q = r.a().lerp(r.b(), i / 32.0);
@@ -251,22 +254,31 @@ public final class Planner {
     // 천 충돌 칸
     // ------------------------------------------------------------------
 
-    /** 칸(BlockPos.asLong) → 작은 칸 비트. 막 면을 0.125칸 간격으로 훑는다. 열린 입구 띠는 비운다 (두루마리 자리는 남긴다). */
-    public static Map<Long, Long> masks(Membrane.Result r, Door door, boolean open) {
-        Map<Long, Long> out = new HashMap<>();
+    /**
+     * 칸(BlockPos.asLong) → 작은 칸 비트. 막 면을 0.125칸 간격으로 훑는다. 열린 입구 띠는 비운다 (두루마리 자리는 남긴다).
+     * 0.4.10: 원시형 맵과 할당 없는 안쪽 루프 (결과는 전과 비트 단위로 같다, 2~3배 빠름).
+     */
+    public static Long2LongOpenHashMap masks(Membrane.Result r, Door door, boolean open) {
+        Long2LongOpenHashMap out = new Long2LongOpenHashMap();
         boolean cut = door != null && open;
         for (com.tarp.core.Hull3.Face f : r.faces) {
             List<V3> poly = f.poly();
             V3 o = poly.get(0);
+            double ox = o.x(), oy = o.y(), oz = o.z();
             for (int i = 1; i + 1 < poly.size(); i++) {
                 V3 a = poly.get(i), b = poly.get(i + 1);
-                double la = a.sub(o).len(), lb = b.sub(o).len(), lab = b.sub(a).len();
+                double ax = a.x() - ox, ay = a.y() - oy, az = a.z() - oz;
+                double bx = b.x() - ox, by = b.y() - oy, bz = b.z() - oz;
+                double cx = bx - ax, cy = by - ay, cz = bz - az;
+                double la = Math.sqrt(ax * ax + ay * ay + az * az), lb = Math.sqrt(bx * bx + by * by + bz * bz), lab = Math.sqrt(cx * cx + cy * cy + cz * cz);
                 int n = Math.max(1, (int) Math.ceil(Math.max(la, Math.max(lb, lab)) / 0.125));
                 for (int u = 0; u <= n; u++) {
+                    double fu = (double) u / n;
                     for (int v = 0; v + u <= n; v++) {
-                        V3 q = o.add(a.sub(o).mul((double) u / n)).add(b.sub(o).mul((double) v / n));
-                        if (cut && door.cutsRoof(q.x(), q.y(), q.z())) continue;
-                        mark(out, q);
+                        double fv = (double) v / n;
+                        double qx = ox + ax * fu + bx * fv, qy = oy + ay * fu + by * fv, qz = oz + az * fu + bz * fv;
+                        if (cut && door.cutsRoof(qx, qy, qz)) continue;
+                        mark(out, qx, qy, qz);
                     }
                 }
             }
@@ -277,17 +289,18 @@ public final class Planner {
             for (double s = door.s0; s <= door.s1 + 1e-9; s += 0.125) {
                 double d = r.outerD(ed, s, door.top);
                 if (Double.isNaN(d)) d = door.rollDepth(s);
-                mark(out, new V3(ed.px(s) + ed.nx * d, door.top, ed.pz(s) + ed.nz * d));
+                mark(out, ed.px(s) + ed.nx * d, door.top, ed.pz(s) + ed.nz * d);
             }
         }
         return out;
     }
 
-
-    private static void mark(Map<Long, Long> out, V3 q) {
-        int bx = (int) Math.floor(q.x()), by = (int) Math.floor(q.y()), bz = (int) Math.floor(q.z());
-        int sx = Math.min(3, (int) ((q.x() - bx) * 4)), sy = Math.min(3, (int) ((q.y() - by) * 4)), sz = Math.min(3, (int) ((q.z() - bz) * 4));
-        out.merge(BlockPos.asLong(bx, by, bz), 1L << CanvasCellBlockEntity.bit(sx, sy, sz), (x, y) -> x | y);
+    private static void mark(Long2LongOpenHashMap out, double x, double y, double z) {
+        int bx = (int) Math.floor(x), by = (int) Math.floor(y), bz = (int) Math.floor(z);
+        int sx = Math.min(3, (int) ((x - bx) * 4)), sy = Math.min(3, (int) ((y - by) * 4)), sz = Math.min(3, (int) ((z - bz) * 4));
+        long key = BlockPos.asLong(bx, by, bz), bit = 1L << CanvasCellBlockEntity.bit(sx, sy, sz);
+        long cur = out.get(key);
+        if ((cur & bit) == 0) out.put(key, cur | bit);
     }
 
     /** 입구 고르기: 클릭한 점에서 가장 가까운 변. */

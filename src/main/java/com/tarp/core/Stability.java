@@ -210,6 +210,8 @@ public final class Stability {
                 Pole p = poles.get(i);
                 for (int j = i + 1; j < n; j++) {
                     Pole q = poles.get(j);
+                    // 0.4.10: 상자가 TOUCH 안으로 겹치지 않으면 선분 거리 계산을 건너뛴다
+                    if (apart(p, q)) continue;
                     double[] st = closest(p.a(), p.b(), q.a(), q.b());
                     if (p.at(st[0]).dist(q.at(st[1])) < TOUCH) {
                         int pi = addPoint(i, st[0]), qi = addPoint(j, st[1]);
@@ -221,10 +223,24 @@ public final class Stability {
             parent = new int[m];
             for (int i = 0; i < m; i++) parent[i] = i;
             for (int[] pr : pairs) union(pr[0], pr[1]);
-            for (int i = 0; i < m; i++)
-                for (int j = i + 1; j < m; j++)
-                    if (ptPos.get(i).dist(ptPos.get(j)) < TOUCH) union(i, j);
-            for (int i = 0; i < n; i++) poleNodes.add(new ArrayList<>());
+            // 0.4.10: 가까운 점 합치기를 격자(칸 크기 > TOUCH)로. 전엔 모든 점 쌍 (m²/2)
+            Map<Long, List<Integer>> grid = new HashMap<>();
+            for (int i = 0; i < m; i++) {
+                V3 pi = ptPos.get(i);
+                long gx = (long) Math.floor(pi.x() / GRID), gy = (long) Math.floor(pi.y() / GRID), gz = (long) Math.floor(pi.z() / GRID);
+                for (long dx = -1; dx <= 1; dx++)
+                    for (long dy = -1; dy <= 1; dy++)
+                        for (long dz = -1; dz <= 1; dz++) {
+                            List<Integer> cell = grid.get(gkey(gx + dx, gy + dy, gz + dz));
+                            if (cell == null) continue;
+                            for (int j : cell) if (ptPos.get(j).dist(pi) < TOUCH) union(i, j);
+                        }
+                grid.computeIfAbsent(gkey(gx, gy, gz), k -> new ArrayList<>()).add(i);
+            }
+            for (int i = 0; i < n; i++) {
+                poleNodes.add(new ArrayList<>());
+                nodeT.add(new HashMap<>());
+            }
             for (int i = 0; i < m; i++) {
                 int root = find(i);
                 Node node = nodes.computeIfAbsent(root, k -> new Node());
@@ -232,22 +248,35 @@ public final class Stability {
                 int pole = ptPole.get(i)[0];
                 node.members.add(pole);
                 if (!poleNodes.get(pole).contains(root)) poleNodes.get(pole).add(root);
+                nodeT.get(pole).put(root, ptT.get(i)); // 같은 노드의 점이 여럿이면 마지막 점 (전과 같다)
             }
             for (Node node : nodes.values()) {
                 node.ground = blockContact(node.pos, ground);
                 for (V3 s : stakes) if (s.dist(node.pos) < TOUCH) node.stake = true;
             }
             for (int i = 0; i < n; i++) {
-                final int pole = i;
-                poleNodes.get(i).sort((x, y) -> Double.compare(tOf(pole, x), tOf(pole, y)));
+                final Map<Integer, Double> ts = nodeT.get(i);
+                poleNodes.get(i).sort((x, y) -> Double.compare(ts.getOrDefault(x, 0.0), ts.getOrDefault(y, 0.0)));
                 poleEnds.add(new int[]{find(0 + 2 * i), find(1 + 2 * i)});
             }
         }
 
-        double tOf(int pole, int node) {
-            double best = 0;
-            for (int i = 0; i < ptPos.size(); i++) if (ptPole.get(i)[0] == pole && find(i) == node) best = ptT.get(i);
-            return best;
+        /** 지지대별 노드 → 매개변수 (0.4.10: 정렬 비교자 안에서 모든 점을 훑던 tOf 대신). */
+        final List<Map<Integer, Double>> nodeT = new ArrayList<>();
+
+        static final double GRID = 0.1;
+
+        static long gkey(long x, long y, long z) {
+            return (x & 0x1FFFFF) << 42 | (y & 0x1FFFFF) << 21 | (z & 0x1FFFFF);
+        }
+
+        static boolean apart(Pole p, Pole q) {
+            return Math.max(p.a().x(), p.b().x()) + TOUCH < Math.min(q.a().x(), q.b().x())
+                    || Math.max(q.a().x(), q.b().x()) + TOUCH < Math.min(p.a().x(), p.b().x())
+                    || Math.max(p.a().y(), p.b().y()) + TOUCH < Math.min(q.a().y(), q.b().y())
+                    || Math.max(q.a().y(), q.b().y()) + TOUCH < Math.min(p.a().y(), p.b().y())
+                    || Math.max(p.a().z(), p.b().z()) + TOUCH < Math.min(q.a().z(), q.b().z())
+                    || Math.max(q.a().z(), q.b().z()) + TOUCH < Math.min(p.a().z(), p.b().z());
         }
 
         int footNode(int i) {
@@ -288,27 +317,39 @@ public final class Stability {
             return nd.ground || nd.stake || otherAlive(node, self, alive);
         }
 
+        /** 이번 판정 회차의 묶음 균형 결과 (노드 → 결과). 한 회차 안에서는 alive·lean 이 그대로라 묶음마다 한 번만 센다 (0.4.10). */
+        Map<Integer, Boolean> balancedCache = new HashMap<>();
+        Kind[] kinds;
+
         /** 수평 지지대로 이어진 점 묶음의 균형. */
         boolean groupBalanced(int start, boolean[] alive, int[] lean) {
+            Boolean cached = balancedCache.get(start);
+            if (cached != null) return cached;
             Set<Integer> group = new HashSet<>();
+            boolean res = groupBalancedRaw(start, alive, lean, group);
+            for (int nd : group) balancedCache.put(nd, res);
+            return res;
+        }
+
+        private boolean groupBalancedRaw(int start, boolean[] alive, int[] lean, Set<Integer> group) {
             ArrayDeque<Integer> queue = new ArrayDeque<>();
             group.add(start);
             queue.add(start);
             while (!queue.isEmpty()) {
                 int nd = queue.poll();
                 for (int m : nodes.get(nd).members) {
-                    if (!alive[m] || poles.get(m).kind() != Kind.HORIZONTAL) continue;
+                    if (!alive[m] || kinds[m] != Kind.HORIZONTAL) continue;
                     for (int other : poleNodes.get(m)) if (group.add(other)) queue.add(other);
                 }
             }
             for (int nd : group) {
                 Node node = nodes.get(nd);
                 if (node.ground || node.stake) return true;
-                for (int m : node.members) if (alive[m] && poles.get(m).kind() == Kind.VERTICAL) return true;
+                for (int m : node.members) if (alive[m] && kinds[m] == Kind.VERTICAL) return true;
             }
             List<double[]> dirs = new ArrayList<>();
             for (int i = 0; i < poles.size(); i++) {
-                if (!alive[i] || poles.get(i).kind() != Kind.DIAGONAL || !group.contains(lean[i])) continue;
+                if (!alive[i] || kinds[i] != Kind.DIAGONAL || !group.contains(lean[i])) continue;
                 V3 d = poles.get(i).top().sub(poles.get(i).foot());
                 dirs.add(new double[]{d.x(), d.z()});
             }
@@ -331,16 +372,19 @@ public final class Stability {
             int n = poles.size();
             boolean[] alive = new boolean[n];
             java.util.Arrays.fill(alive, true);
+            kinds = new Kind[n];
+            for (int i = 0; i < n; i++) kinds[i] = poles.get(i).kind();
             boolean changed = true;
             while (changed) {
                 changed = false;
+                balancedCache = new HashMap<>();
                 int[] lean = new int[n];
-                for (int i = 0; i < n; i++) lean[i] = alive[i] && poles.get(i).kind() == Kind.DIAGONAL ? leanNode(i, alive) : -1;
+                for (int i = 0; i < n; i++) lean[i] = alive[i] && kinds[i] == Kind.DIAGONAL ? leanNode(i, alive) : -1;
                 boolean[] next = alive.clone();
                 for (int i = 0; i < n; i++) {
                     if (!alive[i]) continue;
                     Pole p = poles.get(i);
-                    boolean ok = switch (p.kind()) {
+                    boolean ok = switch (kinds[i]) {
                         case VERTICAL -> {
                             int f = footNode(i);
                             yield onBlockTop(p.foot(), ground) || nodes.get(f).stake || otherAlive(f, i, alive);

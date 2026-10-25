@@ -38,18 +38,6 @@ public record V3(double x, double y, double z) {
         return new V3(x + (o.x - x) * t, y + (o.y - y) * t, z + (o.z - z) * t);
     }
 
-    public boolean near(V3 o, double eps) {
-        return Math.abs(x - o.x) <= eps && Math.abs(y - o.y) <= eps && Math.abs(z - o.z) <= eps && dist(o) <= eps;
-    }
-
-    /** 1/32칸 격자에 맞춘 키. 같은 점 찾기에 쓴다. */
-    public long key() {
-        long qx = Math.round(x * 32) & 0x1FFFFFL;
-        long qy = Math.round(y * 32) & 0x3FFFFL;
-        long qz = Math.round(z * 32) & 0x1FFFFFL;
-        return (qx << 39) | (qy << 21) | qz;
-    }
-
     @Override
     public String toString() {
         return String.format("(%.3f, %.3f, %.3f)", x, y, z);

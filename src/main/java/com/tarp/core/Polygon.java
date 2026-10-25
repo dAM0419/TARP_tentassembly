@@ -66,7 +66,7 @@ public final class Polygon {
             double t = l2 < 1e-12 ? 0 : ((x - a.x()) * ex + (z - a.z()) * ez) / l2;
             t = Math.max(0, Math.min(1, t));
             double px = a.x() + ex * t, pz = a.z() + ez * t;
-            double d = Math.hypot(x - px, z - pz);
+            double ddx = x - px, ddz = z - pz, d = Math.sqrt(ddx * ddx + ddz * ddz); // 0.4.10: hypot 보다 빠르다
             if (d < best) {
                 best = d;
                 bestE = i;

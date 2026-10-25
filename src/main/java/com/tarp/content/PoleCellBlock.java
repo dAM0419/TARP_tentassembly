@@ -78,7 +78,10 @@ public class PoleCellBlock extends BaseEntityBlock {
 
     @Override
     protected void neighborChanged(BlockState state, Level level, BlockPos pos, Block neighbor, BlockPos from, boolean moving) {
-        if (level instanceof ServerLevel sl) TarpService.scheduleCheck(sl, pos);
+        // 0.4.10: 쓰러짐 판정은 지지대 끝점이 닿은 블록만 본다. 끝점이 맞닿지 않은 이웃(물 흐름, 레드스톤 등)의 갱신으로는
+        // 덩어리 전체를 다시 판정하지 않는다 (전엔 그런 갱신이 이어지면 매 틱 판정했다)
+        if (level instanceof ServerLevel sl && level.getBlockEntity(pos) instanceof PoleCellBlockEntity be && be.endTouches(from))
+            TarpService.scheduleCheck(sl, pos);
     }
 
     @Override

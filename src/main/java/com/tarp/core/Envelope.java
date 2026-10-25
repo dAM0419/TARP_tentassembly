@@ -24,11 +24,7 @@ public final class Envelope {
         }
     }
 
-    /** 평면 하나와 그 위의 볼록 다각형 (위에서 보아 반시계). */
-    public record Facet(Plane plane, List<V3> poly) {}
-
     public final List<Plane> planes = new ArrayList<>();
-    public final List<Facet> facets = new ArrayList<>();
 
     private Envelope() {}
 
@@ -149,24 +145,13 @@ public final class Envelope {
             faces.removeIf(f -> f.dead);
         }
 
-        // 위쪽 면 → 평면 묶음
-        List<List<Integer>> groups = new ArrayList<>();
+        // 위쪽 면 → 평면 (0.4.10: 쓰이지 않던 면 다각형 만들기는 뺐다)
         for (Face f : faces) {
             if (f.a == virt || f.b == virt || f.c == virt || f.ny < 1e-6) continue;
             Plane pl = new Plane(f.nx, f.ny, f.nz, f.d);
-            int g = -1;
-            for (int k = 0; k < env.planes.size(); k++) if (env.planes.get(k).same(pl)) g = k;
-            if (g < 0) {
-                env.planes.add(pl);
-                groups.add(new ArrayList<>());
-                g = env.planes.size() - 1;
-            }
-            List<Integer> grp = groups.get(g);
-            for (int v : new int[]{f.a, f.b, f.c}) if (!grp.contains(v)) grp.add(v);
-        }
-        for (int g = 0; g < env.planes.size(); g++) {
-            List<V3> poly = hull2(p, groups.get(g));
-            if (poly.size() >= 3) env.facets.add(new Facet(env.planes.get(g), poly));
+            boolean dup = false;
+            for (Plane q : env.planes) if (q.same(pl)) dup = true;
+            if (!dup) env.planes.add(pl);
         }
         return env;
     }
@@ -183,33 +168,6 @@ public final class Envelope {
             if (seen.add(k)) out.add(v);
         }
         return out;
-    }
-
-    /** 수평 투영의 볼록 껍질 (반시계, x→z 기준 양의 넓이). */
-    static List<V3> hull2(List<V3> p, List<Integer> idx) {
-        List<V3> pts = new ArrayList<>();
-        for (int i : idx) pts.add(p.get(i));
-        pts.sort((u, v) -> u.x() != v.x() ? Double.compare(u.x(), v.x()) : Double.compare(u.z(), v.z()));
-        int n = pts.size();
-        if (n < 3) return pts;
-        V3[] h = new V3[2 * n];
-        int k = 0;
-        for (V3 q : pts) {
-            while (k >= 2 && cross(h[k - 2], h[k - 1], q) <= 1e-12) k--;
-            h[k++] = q;
-        }
-        for (int i = n - 2, t = k + 1; i >= 0; i--) {
-            V3 q = pts.get(i);
-            while (k >= t && cross(h[k - 2], h[k - 1], q) <= 1e-12) k--;
-            h[k++] = q;
-        }
-        List<V3> out = new ArrayList<>();
-        for (int i = 0; i < k - 1; i++) out.add(h[i]);
-        return out;
-    }
-
-    private static double cross(V3 o, V3 a, V3 b) {
-        return (a.x() - o.x()) * (b.z() - o.z()) - (a.z() - o.z()) * (b.x() - o.x());
     }
 
     // ------------------------------------------------------------------ 다각형 자르기

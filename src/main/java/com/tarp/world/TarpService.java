@@ -401,7 +401,8 @@ public final class TarpService {
 
     /** 천 충돌 칸을 지금 상태(입구 열림)에 맞춘다. */
     private static void writeCanvas(ServerLevel level, TarpRec rec) {
-        Map<Long, Long> masks = Planner.masks(rec.shape(), rec.door(), rec.open);
+        it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap masks = rec.open && rec.door() != null
+                ? Planner.masks(rec.shape(), rec.door(), true) : rec.closedMasks();
         Set<Long> cells = new HashSet<>();
         for (long c : rec.cells) cells.add(c);
         boolean was = internal;
@@ -411,10 +412,10 @@ public final class TarpService {
                 if (masks.containsKey(c)) continue;
                 if (level.getBlockEntity(BlockPos.of(c)) instanceof CanvasCellBlockEntity be && be.tarp() == rec.id) be.set(rec.id, 0);
             }
-            for (Map.Entry<Long, Long> e : masks.entrySet()) {
-                BlockPos pos = BlockPos.of(e.getKey());
+            for (it.unimi.dsi.fastutil.longs.Long2LongMap.Entry e : masks.long2LongEntrySet()) {
+                BlockPos pos = BlockPos.of(e.getLongKey());
                 if (level.getBlockEntity(pos) instanceof CanvasCellBlockEntity be) {
-                    if (be.tarp() == rec.id) be.set(rec.id, e.getValue());
+                    if (be.tarp() == rec.id) be.set(rec.id, e.getLongValue());
                     continue;
                 }
                 BlockState st = level.getBlockState(pos);
@@ -424,8 +425,8 @@ public final class TarpService {
                 }
                 if (!st.isAir() && !st.canBeReplaced()) continue;
                 level.setBlock(pos, TarpRegistry.CANVAS_CELL.get().defaultBlockState(), 3);
-                if (level.getBlockEntity(pos) instanceof CanvasCellBlockEntity be) be.set(rec.id, e.getValue());
-                cells.add(e.getKey());
+                if (level.getBlockEntity(pos) instanceof CanvasCellBlockEntity be) be.set(rec.id, e.getLongValue());
+                cells.add(e.getLongKey());
             }
         } finally {
             internal = was;
@@ -473,7 +474,7 @@ public final class TarpService {
 
     /** 방수포가 지나가는 지지대 칸을 덮임으로 (입구가 열려 있어도 닫힌 모양 기준: 입구 띠에는 지지대가 없다). */
     private static void coverPoles(ServerLevel level, TarpRec rec) {
-        for (long c : Planner.masks(rec.shape(), rec.door(), false).keySet()) {
+        for (long c : rec.closedCells()) {
             BlockPos pos = BlockPos.of(c);
             BlockState st = level.getBlockState(pos);
             if (st.getBlock() instanceof PoleCellBlock) setCovered(level, pos, st, true);
@@ -483,20 +484,28 @@ public final class TarpService {
     /** 걷은 방수포가 덮던 지지대 칸을 되돌린다. 다른 방수포가 같은 칸을 덮고 있으면 그대로 둔다. */
     private static void uncoverPoles(ServerLevel level, TarpRec rec) {
         if (!rec.shape().ok()) return;
-        Set<Long> others = null;
-        for (long c : Planner.masks(rec.shape(), rec.door(), false).keySet()) {
+        List<TarpRec> others = null;
+        for (long c : rec.closedCells()) {
             BlockPos pos = BlockPos.of(c);
             BlockState st = level.getBlockState(pos);
             if (!(st.getBlock() instanceof PoleCellBlock) || !st.getValue(PoleCellBlock.COVERED)) continue;
             if (others == null) {
-                others = new HashSet<>();
+                // 0.4.10: 주변 방수포의 칸을 모두 새로 훑어 합치던 것을, 캐시된 칸에서 그 칸만 찾는 것으로
+                others = new ArrayList<>();
                 V3 mid = rec.centre();
-                for (TarpRec t : data(level).s.tarps.values()) {
-                    if (t.id == rec.id || !t.shape().ok() || t.centre().dist(mid) > 2 * Spec.MAX_SPAN) continue;
-                    others.addAll(Planner.masks(t.shape(), t.door(), false).keySet());
+                for (TarpRec t : data(level).s.tarps.values())
+                    if (t.id != rec.id && t.centre().dist(mid) <= 2 * Spec.MAX_SPAN && t.shape().ok()) others.add(t);
+            }
+            boolean kept = false;
+            for (TarpRec t : others) {
+                double[] fp = t.footprint();
+                if (pos.getX() < fp[0] - 2 || pos.getX() > fp[2] + 2 || pos.getZ() < fp[1] - 2 || pos.getZ() > fp[3] + 2) continue;
+                if (t.closedMasks().containsKey(c)) {
+                    kept = true;
+                    break;
                 }
             }
-            if (!others.contains(c)) setCovered(level, pos, st, false);
+            if (!kept) setCovered(level, pos, st, false);
         }
     }
 
@@ -697,10 +706,14 @@ public final class TarpService {
             }
             for (int id : gone) takeTarp(level, id, false, null);
             Set<Integer> rc = ROPE_CELLS.computeIfAbsent(level, k -> new HashSet<>());
-            for (Stability.Rope r : new ArrayList<>(d.s.ropes.values())) {
+            // 0.4.10: 칸을 맞출 노끈만 모은다 (전엔 1초마다 노끈 목록 전체를 복사했다). 칸을 놓다 노끈이 바뀔 수 있어 모은 뒤 처리한다
+            List<Stability.Rope> todo = null;
+            for (Stability.Rope r : d.s.ropes.values()) {
                 if (rc.contains(r.id()) || !level.isLoaded(BlockPos.containing(r.a().x(), r.a().y(), r.a().z()))) continue;
-                putRopeCells(level, r);
+                if (todo == null) todo = new ArrayList<>();
+                todo.add(r);
             }
+            if (todo != null) for (Stability.Rope r : todo) if (d.s.ropes.containsKey(r.id())) putRopeCells(level, r);
             Set<Integer> lit = LIT.computeIfAbsent(level, k -> new HashSet<>());
             for (TarpRec t : d.s.tarps.values()) {
                 if (lit.contains(t.id) || !t.shape().ok()) continue;

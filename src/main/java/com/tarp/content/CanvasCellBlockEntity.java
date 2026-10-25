@@ -24,6 +24,16 @@ public class CanvasCellBlockEntity extends BlockEntity {
         super(TarpRegistry.CANVAS_CELL_BE.get(), pos, state);
     }
 
+    /** 클라이언트만 (0.4.10): 이 칸이 방수포 전체를 그리는 기준 칸인가. TarpRenderer 가 정한다. */
+    public boolean renderAnchor;
+    @javax.annotation.Nullable private net.minecraft.world.phys.AABB cellBox;
+
+    /** 자기 칸 상자 (렌더러가 매 프레임 새로 만들지 않게). */
+    public net.minecraft.world.phys.AABB cellBox() {
+        if (cellBox == null) cellBox = new net.minecraft.world.phys.AABB(worldPosition);
+        return cellBox;
+    }
+
     public int tarp() {
         return tarp;
     }

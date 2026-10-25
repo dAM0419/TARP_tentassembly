@@ -84,29 +84,20 @@ public final class ToolController {
         if (!ItemStack.isSameItemSameComponents(held, planItem)) planItem = held.copy();
         if (t == Tool.TARP && !ties.isEmpty() && (plan == null || planVersion != ClientStore.S.version)) replan();
         Component info = KitController.holding() ? KitController.info() : info();
-        // 0.3.12: 행동바 안내는 내용이 바뀔 때와 사라지기 전(2초마다)만 다시 띄운다.
-        // 매 틱 덮어쓰면 서버가 보낸 결과 메시지("천막을 담았다" 등)가 한 틱 만에 지워졌다.
         long now = mc.level == null ? 0 : mc.level.getGameTime();
-        if (info == null) {
-            lastInfo = null;
-        } else if (now - serverMsgAt > 30) {
+        if (info != null && now - serverMsgAt > 30) {
             // 0.4.9: 매 틱 다시 띄운다 (0.3.x 방식). 0.4.0 의 "바뀔 때·2초마다만"은 다른 출처의 행동바 문구에
             // 덮이면 최대 2초 안 보였고, 지지대 개수 안내가 사라진 것처럼 보였다. 우리 서버 결과 문구만 1.5초 비켜 준다.
             mc.player.displayClientMessage(info, true);
-            lastInfo = info;
-            lastInfoAt = now;
         }
     }
 
-    @Nullable private static Component lastInfo;
-    private static long lastInfoAt, serverMsgAt = Long.MIN_VALUE / 2;
+    private static long serverMsgAt = Long.MIN_VALUE / 2;
 
     /** 서버가 행동바에 결과를 띄웠다: 2초 동안 안내로 덮지 않는다. */
     public static void serverMessage() {
         Minecraft mc = Minecraft.getInstance();
         serverMsgAt = mc.level == null ? 0 : mc.level.getGameTime();
-        lastInfoAt = serverMsgAt;
-        lastInfo = null;
     }
 
     /** 렌더 프레임마다 겨냥점을 갱신. */
@@ -313,8 +304,22 @@ public final class ToolController {
         Minecraft mc = Minecraft.getInstance();
         if (tool != Tool.POLE || start == null || target == null || mc.level == null) return null;
         if (target.p().dist(start) < 0.4) return null;
-        return Planner.forecast(mc.level, ClientStore.S, start, target.p());
+        // 0.4.10: 매 프레임 계산하던 것을, 끝점·구조가 바뀌거나 블록이 바뀌었을 수 있을 때(0.5초마다)만
+        long slot = mc.level.getGameTime() / 10;
+        if (fcResult == null || !start.equals(fcStart) || !target.p().equals(fcEnd) || fcVersion != ClientStore.S.version || fcSlot != slot) {
+            fcResult = Planner.forecast(mc.level, ClientStore.S, start, target.p());
+            fcStart = start;
+            fcEnd = target.p();
+            fcVersion = ClientStore.S.version;
+            fcSlot = slot;
+        }
+        return fcResult;
     }
+
+    @Nullable private static Stability.Forecast fcResult;
+    @Nullable private static V3 fcStart, fcEnd;
+    private static int fcVersion;
+    private static long fcSlot;
 
     @Nullable
     static Component info() {

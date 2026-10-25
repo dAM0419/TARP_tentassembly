@@ -44,13 +44,25 @@ public final class Snap {
         STAKES.clear();
         BlockPos c = mc.player.blockPosition();
         int r = 10;
+        int x0 = c.getX() - r, x1 = c.getX() + r, y0 = c.getY() - r, y1 = c.getY() + r, z0 = c.getZ() - r, z1 = c.getZ() + r;
         BlockPos.MutableBlockPos m = new BlockPos.MutableBlockPos();
-        for (int x = -r; x <= r; x++)
-            for (int y = -r; y <= r; y++)
-                for (int z = -r; z <= r; z++) {
-                    m.set(c.getX() + x, c.getY() + y, c.getZ() + z);
-                    if (mc.level.getBlockState(m).getBlock() instanceof StakeBlock) STAKES.add(Planner.stakeHead(mc.level, m));
+        // 0.4.10: 칸 묶음(16³)마다 팔레트에 말뚝이 없으면 통째로 건너뛴다 (전엔 21³ = 9261칸을 하나씩)
+        for (int cx = x0 >> 4; cx <= x1 >> 4; cx++)
+            for (int cz = z0 >> 4; cz <= z1 >> 4; cz++) {
+                net.minecraft.world.level.chunk.LevelChunk chunk = mc.level.getChunk(cx, cz);
+                for (int sy = y0 >> 4; sy <= y1 >> 4; sy++) {
+                    int si = mc.level.getSectionIndexFromSectionY(sy);
+                    if (si < 0 || si >= chunk.getSections().length) continue;
+                    net.minecraft.world.level.chunk.LevelChunkSection sec = chunk.getSection(si);
+                    if (sec.hasOnlyAir() || !sec.maybeHas(st -> st.getBlock() instanceof StakeBlock)) continue;
+                    for (int x = Math.max(x0, cx << 4); x <= Math.min(x1, (cx << 4) + 15); x++)
+                        for (int y = Math.max(y0, sy << 4); y <= Math.min(y1, (sy << 4) + 15); y++)
+                            for (int z = Math.max(z0, cz << 4); z <= Math.min(z1, (cz << 4) + 15); z++) {
+                                BlockState st = sec.getBlockState(x & 15, y & 15, z & 15);
+                                if (st.getBlock() instanceof StakeBlock) STAKES.add(Planner.stakeHead(st, m.set(x, y, z)));
+                            }
                 }
+            }
         return STAKES;
     }
 

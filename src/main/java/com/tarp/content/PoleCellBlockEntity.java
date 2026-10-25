@@ -53,11 +53,29 @@ public class PoleCellBlockEntity extends BlockEntity {
         return heads;
     }
 
+    /** 클라이언트만 (0.4.10): PoleRenderer 가 구워 둔 메시. 지지대 목록이 바뀌면 버린다. */
+    @javax.annotation.Nullable public Object renderCache;
+    @javax.annotation.Nullable private net.minecraft.world.phys.AABB cellBox;
+
+    public net.minecraft.world.phys.AABB cellBox() {
+        if (cellBox == null) cellBox = new net.minecraft.world.phys.AABB(worldPosition);
+        return cellBox;
+    }
+
     /** 그리는 지지대 전체를 덮는 상자, 그릴 것이 없으면 null. */
     @javax.annotation.Nullable
     public net.minecraft.world.phys.AABB headBox() {
         heads();
         return headBox;
+    }
+
+    /** 이 칸을 지나는 지지대의 끝점이 칸 b 에 닿는가 (칸 경계 위의 점은 양쪽 칸에 닿는다, Stability.blockContact 와 같은 기준). */
+    public boolean endTouches(BlockPos b) {
+        for (Entry e : entries)
+            for (V3 p : new V3[]{e.a(), e.b()})
+                if (p.x() >= b.getX() - 1e-4 && p.x() <= b.getX() + 1 + 1e-4 && p.y() >= b.getY() - 1e-4 && p.y() <= b.getY() + 1 + 1e-4
+                        && p.z() >= b.getZ() - 1e-4 && p.z() <= b.getZ() + 1 + 1e-4) return true;
+        return false;
     }
 
     public void add(int id, V3 a, V3 b) {
@@ -73,6 +91,7 @@ public class PoleCellBlockEntity extends BlockEntity {
     private void changed() {
         shape = null;
         heads = null;
+        renderCache = null;
         setChanged();
         if (level != null && !level.isClientSide) level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
     }
@@ -169,6 +188,7 @@ public class PoleCellBlockEntity extends BlockEntity {
         }
         shape = null;
         heads = null;
+        renderCache = null;
     }
 
     @Override

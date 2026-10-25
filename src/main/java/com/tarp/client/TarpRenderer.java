@@ -49,8 +49,6 @@ public class TarpRenderer implements BlockEntityRenderer<CanvasCellBlockEntity> 
         ResourceLocation texture = CANVAS;
         AABB bounds;
         long anchor = Long.MIN_VALUE;
-        /** 닫힌 모양의 천 칸 (좌표값 순). 기준 칸 찾기용, 방수포마다 한 번만 센다. */
-        long[] cells;
     }
 
     private static final long NONE = Long.MIN_VALUE + 1;
@@ -74,17 +72,21 @@ public class TarpRenderer implements BlockEntityRenderer<CanvasCellBlockEntity> 
      */
     public static void tick() {
         CACHE.keySet().removeIf(id -> !ClientStore.S.tarps.containsKey(id));
-        Level level = Minecraft.getInstance().level;
-        if (level == null) return;
+        Minecraft mc = Minecraft.getInstance();
+        Level level = mc.level;
+        if (level == null || mc.player == null) return;
         long now = level.getGameTime();
+        double px = mc.player.getX(), pz = mc.player.getZ(), far = 160 + Spec.MAX_SPAN;
         for (TarpRec rec : ClientStore.S.tarps.values()) {
+            // 0.4.10: 그리는 거리 밖 방수포는 모양도 구하지 않는다 (전엔 접속 직후 차원의 모든 방수포를 계산했다)
+            double[] fp = rec.footprint();
+            if (px < fp[0] - far || px > fp[2] + far || pz < fp[1] - far || pz > fp[3] + far) continue;
             if (!rec.shape().ok()) continue;
             Entry e = CACHE.computeIfAbsent(rec.id, k -> new Entry());
             if (e.rec != rec) {
                 e.rec = rec;
                 e.builtAt = Long.MIN_VALUE;
                 e.anchor = Long.MIN_VALUE;
-                e.cells = null;
             }
             if (anchorValid(level, e)) continue;
             if (e.anchor == NONE && (now + rec.id) % 5 != 0) continue;
@@ -120,14 +122,20 @@ public class TarpRenderer implements BlockEntityRenderer<CanvasCellBlockEntity> 
 
     private static boolean anchorValid(Level level, Entry e) {
         if (e.anchor == Long.MIN_VALUE || e.anchor == NONE) return false;
-        return level.getBlockEntity(BlockPos.of(e.anchor)) instanceof CanvasCellBlockEntity be && be.tarp() == e.rec.id;
+        if (level.getBlockEntity(BlockPos.of(e.anchor)) instanceof CanvasCellBlockEntity be && be.tarp() == e.rec.id) {
+            be.renderAnchor = true;
+            return true;
+        }
+        return false;
     }
 
-    /** 이 방수포의 천 칸 중 좌표값이 가장 작은 칸 (서버·클라이언트가 같은 칸을 고른다). */
+    /** 이 방수포의 천 칸 중 좌표값이 가장 작은 칸. 0.4.10: 칸 목록은 TarpRec 캐시를 쓴다. */
     private static long findAnchor(Level level, Entry e) {
-        if (e.cells == null) e.cells = Planner.masks(e.rec.shape(), null, false).keySet().stream().mapToLong(Long::longValue).sorted().toArray();
-        for (long k : e.cells) {
-            if (level.getBlockEntity(BlockPos.of(k)) instanceof CanvasCellBlockEntity be && be.tarp() == e.rec.id) return k;
+        for (long k : e.rec.closedCells()) {
+            if (level.getBlockEntity(BlockPos.of(k)) instanceof CanvasCellBlockEntity be && be.tarp() == e.rec.id) {
+                be.renderAnchor = true;
+                return k;
+            }
         }
         return NONE;
     }
@@ -175,6 +183,7 @@ public class TarpRenderer implements BlockEntityRenderer<CanvasCellBlockEntity> 
      */
     static TarpMesh.Lighting lighting(Level level) {
         Map<Long, Integer> cache = new HashMap<>();
+        boolean shader = shaderOn(); // 0.4.10: 면마다 리플렉션으로 묻던 것을 굽기마다 한 번
         java.util.function.Function<V3, int[]> sample = p -> {
             BlockPos pos = BlockPos.containing(p.x(), p.y(), p.z());
             long k = pos.asLong();
@@ -189,13 +198,11 @@ public class TarpRenderer implements BlockEntityRenderer<CanvasCellBlockEntity> 
         };
         return new TarpMesh.Lighting() {
             int along(V3 p, V3 dir) {
-                int last = -1;
                 for (double d : new double[]{0.35, 0.8, 1.3, 1.9}) {
                     int c = sample.apply(p.add(dir.mul(d)))[0];
                     if (c != -1) return c;
                 }
-                BlockPos pos = BlockPos.containing(p.x(), p.y(), p.z());
-                return last == -1 ? LevelRenderer.getLightColor(level, pos) : last;
+                return LevelRenderer.getLightColor(level, BlockPos.containing(p.x(), p.y(), p.z()));
             }
 
             @Override
@@ -205,7 +212,7 @@ public class TarpRenderer implements BlockEntityRenderer<CanvasCellBlockEntity> 
 
             @Override
             public double shade(V3 n) {
-                return faceShade(level, n);
+                return faceShade(level, n, shader);
             }
 
             /**
@@ -225,8 +232,8 @@ public class TarpRenderer implements BlockEntityRenderer<CanvasCellBlockEntity> 
      * 바깥에서 본 음영 (0.3.6): 해를 정면으로 받는 면은 밝고, 등진 면·가파른 면은 어둡다. 밤엔 차이가 줄어든다.
      * 셰이더팩이 켜져 있으면 셰이더가 해 방향 음영을 하므로 1.
      */
-    static double faceShade(Level level, V3 n) {
-        if (shaderOn()) return 1;
+    static double faceShade(Level level, V3 n, boolean shader) {
+        if (shader) return 1;
         double a = level.getSunAngle(1);
         V3 sun = new V3(-Math.sin(a), Math.cos(a), 0);
         double day = Math.max(0, Math.min(1, sun.y() * 4 + 0.2));
@@ -257,14 +264,20 @@ public class TarpRenderer implements BlockEntityRenderer<CanvasCellBlockEntity> 
         }
     }
 
+    private static java.lang.reflect.Method irisShaderInUse;
+
     static boolean shaderOn() {
         try {
             if (irisPresent == null) irisPresent = net.neoforged.fml.ModList.get().isLoaded("iris") || net.neoforged.fml.ModList.get().isLoaded("oculus");
-            if (!irisPresent) return false;
-            Class<?> api = Class.forName("net.irisshaders.iris.api.v0.IrisApi");
-            Object inst = api.getMethod("getInstance").invoke(null);
-            return (Boolean) api.getMethod("isShaderPackInUse").invoke(inst);
+            if (!irisPresent || irisShadowBroken) return false;
+            if (irisShaderInUse == null) {
+                Class<?> api = Class.forName("net.irisshaders.iris.api.v0.IrisApi");
+                if (irisApi == null) irisApi = api.getMethod("getInstance").invoke(null);
+                irisShaderInUse = api.getMethod("isShaderPackInUse");
+            }
+            return (Boolean) irisShaderInUse.invoke(irisApi);
         } catch (Throwable t) {
+            irisShadowBroken = true;
             return false;
         }
     }
@@ -279,11 +292,18 @@ public class TarpRenderer implements BlockEntityRenderer<CanvasCellBlockEntity> 
         return 160;
     }
 
+    /** 0.4.10: 기준 칸이 아니면 그리지 않는다 → 바닐라가 칸마다 하던 빛 조회를 건너뛴다 (천막 하나에 칸이 수백 개). */
+    @Override
+    public boolean shouldRender(CanvasCellBlockEntity be, net.minecraft.world.phys.Vec3 cam) {
+        return be.renderAnchor && BlockEntityRenderer.super.shouldRender(be, cam);
+    }
+
     @Override
     public AABB getRenderBoundingBox(CanvasCellBlockEntity be) {
-        // 기준 칸만 방수포 전체 크기, 나머지 칸은 자기 칸 크기 → 화면 밖 칸은 그리기 전에 걸러진다 (0.3.12)
+        // 기준 칸만 방수포 전체 크기, 나머지 칸은 자기 칸 크기(0.4.10: 매 프레임 새로 만들지 않는다)
+        if (!be.renderAnchor) return be.cellBox();
         Entry e = CACHE.get(be.tarp());
-        if (e == null || e.anchor != be.getBlockPos().asLong()) return new AABB(be.getBlockPos());
+        if (e == null || e.anchor != be.getBlockPos().asLong()) return be.cellBox();
         if (e.bounds != null) return e.bounds;
         V3 c = e.rec.centre();
         return new AABB(c.x(), c.y(), c.z(), c.x(), c.y(), c.z()).inflate(Spec.MAX_SPAN / 2);

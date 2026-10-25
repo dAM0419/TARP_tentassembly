@@ -157,8 +157,9 @@ public final class MeshRenderer {
         }
         // 밑단 고리: 묶는 점에서 막 가장자리까지
         for (TarpRec t : ClientStore.S.tarps.values()) {
+            if (t.centre().hdist(origin) > RANGE) continue; // 0.4.10: 거리 먼저 (먼 방수포는 모양을 구하지 않는다)
             Membrane.Result r = t.shape();
-            if (!r.ok() || t.centre().hdist(origin) > RANGE) continue;
+            if (!r.ok()) continue;
             for (int i = 0; i < r.ties.size(); i++) out.prism(r.ties.get(i), nearestCorner(r, r.hem(i)), Spec.ROPE_THICK / 2, rope, wool, 4);
         }
         lashings(level, out, origin, rope, wool);
@@ -184,14 +185,22 @@ public final class MeshRenderer {
             ropeEnds.add(r.a());
             ropeEnds.add(r.b());
         }
-        for (TarpRec t : ClientStore.S.tarps.values()) if (t.shape().ok()) ropeEnds.addAll(t.shape().ties);
+        for (TarpRec t : ClientStore.S.tarps.values()) ropeEnds.addAll(t.ties); // 묶는 점 (순서만 다를 뿐 모양의 ties 와 같은 점)
+        // 0.4.10: 끝점 찾기를 격자로 (전엔 지지대 끝 × 모든 노끈 끝)
+        java.util.Map<Long, java.util.List<V3>> endGrid = new java.util.HashMap<>();
+        for (V3 q : ropeEnds) endGrid.computeIfAbsent(gridKey(q, 0, 0, 0), k -> new java.util.ArrayList<>()).add(q);
         // 지지대 끝: 노끈이 걸렸거나 다른 지지대와 만나면
         for (Stability.Pole p : ClientStore.S.poles.values()) {
             if (p.a().hdist(origin) > RANGE && p.b().hdist(origin) > RANGE) continue;
             for (int e = 0; e < 2; e++) {
                 V3 end = e == 0 ? p.a() : p.b(), other = e == 0 ? p.b() : p.a();
                 boolean tied = false;
-                for (V3 q : ropeEnds) if (q.dist(end) < Stability.TOUCH) tied = true;
+                for (int dx = -1; dx <= 1 && !tied; dx++)
+                    for (int dy = -1; dy <= 1 && !tied; dy++)
+                        for (int dz = -1; dz <= 1 && !tied; dz++) {
+                            java.util.List<V3> cell = endGrid.get(gridKey(end, dx, dy, dz));
+                            if (cell != null) for (V3 q : cell) if (q.dist(end) < Stability.TOUCH) tied = true;
+                        }
                 if (!tied) {
                     for (int id : ClientStore.S.polesNear((int) Math.floor(end.x()), (int) Math.floor(end.y()), (int) Math.floor(end.z()))) {
                         Stability.Pole q = ClientStore.S.poles.get(id);
@@ -224,6 +233,12 @@ public final class MeshRenderer {
             for (double[] w : neck)
                 out.prism(head.add(down.mul(w[0])), head.add(down.mul(w[1])), 1.5 / 16 + BAND, rope, wool, 4);
         }
+    }
+
+    /** 끝점 격자 칸 (크기 0.5 > TOUCH): 점이 든 칸에서 (dx, dy, dz) 옮긴 칸. */
+    private static long gridKey(V3 p, int dx, int dy, int dz) {
+        long x = (long) Math.floor(p.x() * 2) + dx, y = (long) Math.floor(p.y() * 2) + dy, z = (long) Math.floor(p.z() * 2) + dz;
+        return (x & 0x1FFFFF) << 42 | (y & 0x1FFFFF) << 21 | (z & 0x1FFFFF);
     }
 
     private static void upload(Baked b, BufferBuilder bb, V3 origin, long now) {

@@ -63,6 +63,31 @@ public final class TarpRec {
     public void setDoor(int edge) {
         doorEdge = edge;
         doorBuilt = false;
+        closed = null;
+        closedSorted = null;
+    }
+
+    private transient it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap closed;
+    private transient long[] closedSorted;
+
+    /**
+     * 닫힌 모양(입구가 있으면 두루마리 자리 포함)의 천 칸 (0.4.10 캐시). 지지대 덮기·되돌리기, 렌더 기준 칸 찾기가 같이 쓴다.
+     * 전엔 부를 때마다 막 면을 다시 훑었다 (천막 하나 1~4ms, 방수포를 걷을 때 주변 방수포 수만큼).
+     * 돌려받은 맵은 고치지 않는다.
+     */
+    public it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap closedMasks() {
+        if (closed == null) closed = Planner.masks(shape(), door(), false);
+        return closed;
+    }
+
+    /** closedMasks 의 칸, 좌표값 순. */
+    public long[] closedCells() {
+        if (closedSorted == null) {
+            long[] k = closedMasks().keySet().toLongArray();
+            java.util.Arrays.sort(k);
+            closedSorted = k;
+        }
+        return closedSorted;
     }
 
     private transient double[] footprint;

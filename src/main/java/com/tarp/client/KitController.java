@@ -43,7 +43,7 @@ public final class KitController {
     @Nullable private static Membrane.Result viewShape;
     private static List<BlockPos> viewBad = List.of();
     @Nullable private static V3 viewOrigin;
-    private static int viewRot = -1, viewHash;
+    private static int viewRot = -1;
     /** 고정 뒤 겨누는 부품. */
     @Nullable private static Kit.Part aimPart;
     private static int aimIndex = -1;
@@ -66,6 +66,7 @@ public final class KitController {
         if (!ItemStack.isSameItemSameComponents(held, cachedStack)) {
             cachedStack = held.copy();
             kit = Kit.of(held);
+            kitStamp++;
         }
         return kit;
     }
@@ -123,19 +124,23 @@ public final class KitController {
             r = rot();
             if (o == null) return;
         }
-        int hash = cachedStack.getComponents().hashCode();
-        if (viewOrigin == null || !viewOrigin.equals(o) || viewRot != r || viewHash != hash || ClientStore.S.version != lastVersion) {
-            Kit v = Kit.load(k.save());
+        // 0.4.10: 키트가 바뀔 때만 복사하고(전엔 매 프레임 NBT 전체 해시), 기준점·회전이 바뀌면 상대 막 모양을 옮겨 쓴다
+        if (cachedView == null || viewStamp != kitStamp) {
+            cachedView = Kit.load(k.save());
+            viewStamp = kitStamp;
+            viewOrigin = null;
+        }
+        if (viewOrigin == null || !viewOrigin.equals(o) || viewRot != r || ClientStore.S.version != lastVersion) {
+            Kit v = cachedView;
             v.origin = o;
             v.rot = r;
             viewOrigin = o;
             viewRot = r;
-            viewHash = hash;
             lastVersion = ClientStore.S.version;
-            viewShape = v.shape();
+            viewShape = v.relShape();
+            viewOffset = v.relOffset();
             Minecraft mc = Minecraft.getInstance();
             viewBad = k.anchored || mc.level == null ? List.of() : v.problems(mc.level);
-            cachedView = v;
         }
         view = cachedView;
         if (k.anchored) pickPart(view);
@@ -143,6 +148,9 @@ public final class KitController {
 
     @Nullable private static Kit cachedView;
     private static int lastVersion = -1;
+    /** 손에 든 키트가 바뀐 횟수 (투영 복사본을 다시 만들 때). */
+    private static int kitStamp, viewStamp = -1;
+    private static V3 viewOffset = V3.ZERO;
 
     private static void pickPart(Kit v) {
         Kit.Part stage = v.stage();
@@ -287,7 +295,8 @@ public final class KitController {
         }
         if (viewShape != null && viewShape.ok()) {
             int rgb = stage == Kit.Part.TARP ? PreviewRenderer.YELLOW : base;
-            TarpMesh.emitPreview(out, viewShape, Geo.argb(stage == Kit.Part.TARP ? 110 : 70, rgb));
+            Geo.Out moved = new Geo.Out(out.vc, out.entity, out.origin.sub(viewOffset), out.light, out.pose);
+            TarpMesh.emitPreview(moved, viewShape, Geo.argb(stage == Kit.Part.TARP ? 110 : 70, rgb));
         }
         for (BlockPos p : viewBad)
             outX.box(new V3(p.getX() + 0.02, p.getY() + 0.02, p.getZ() + 0.02), new V3(p.getX() + 0.98, p.getY() + 0.98, p.getZ() + 0.98), Geo.argb(80, PreviewRenderer.RED));
