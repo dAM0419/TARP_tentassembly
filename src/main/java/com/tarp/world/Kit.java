@@ -592,7 +592,7 @@ public final class Kit {
         int p = 0;
         for (PoleBp b : poles) p += b.value();
         int r = ties.size();
-        for (RopeBp b : ropes) r += (int) Math.ceil(b.a().dist(b.b()) - 1e-6);
+        for (RopeBp b : ropes) r += Spec.ropeCost(b.a().dist(b.b()));
         return new int[]{p, stakes.size(), r};
     }
 

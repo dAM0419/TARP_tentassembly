@@ -234,7 +234,7 @@ public final class TarpService {
     public static void placeRope(ServerPlayer pl, V3 a, V3 b) {
         ServerLevel level = pl.serverLevel();
         TarpData d = data(level);
-        int n = (int) Math.ceil(a.dist(b) - 1e-6);
+        int n = Spec.ropeCost(a.dist(b));
         RopeResult r;
         if (!finite(a) || !finite(b) || a.dist(b) < 0.3) r = RopeResult.SAME;
         else if (a.dist(b) > Spec.ROPE_MAX) r = RopeResult.TOO_LONG;
@@ -246,13 +246,14 @@ public final class TarpService {
             level.playSound(null, BlockPos.containing(b.x(), b.y(), b.z()), SoundEvents.LEASH_KNOT_PLACE, SoundSource.BLOCKS, 1, 1);
             r = RopeResult.PLACED;
         }
-        tell(pl, Component.translatable("tarp.msg.rope." + r.name().toLowerCase(), n));
+        tell(pl, Component.translatable("tarp.msg.rope." + r.name().toLowerCase(), n, String.format("%.1f", a.dist(b))));
     }
 
     public static int addRope(ServerLevel level, V3 a, V3 b) {
         TarpData d = data(level);
         Stability.Rope r = new Stability.Rope(d.newId(), a, b);
         d.s.addRope(r);
+        d.ropeValue.put(r.id(), Spec.ropeCost(a.dist(b)));
         d.setDirty();
         putRopeCells(level, r);
         broadcast(level, Msg.S_ROPE_ADD, buf -> {
@@ -265,13 +266,15 @@ public final class TarpService {
     private static void takeRope(ServerLevel level, TarpData d, int id, boolean drop, Set<Integer> seeds) {
         Stability.Rope r = d.s.removeRope(id);
         if (r == null) return;
+        int value = d.value(r);
+        d.ropeValue.remove(id);
         d.setDirty();
         clearRopeCells(level, r);
         broadcast(level, Msg.S_ROPE_DEL, b -> {
             b.writeVarInt(1);
             b.writeVarInt(id);
         });
-        if (drop) dropItems(level, r.a().lerp(r.b(), 0.5), new ItemStack(TarpRegistry.ROPE.get(), (int) Math.ceil(r.a().dist(r.b()) - 1e-6)));
+        if (drop) dropItems(level, r.a().lerp(r.b(), 0.5), new ItemStack(TarpRegistry.ROPE.get(), value));
         for (V3 end : new V3[]{r.a(), r.b()})
             seeds.addAll(d.s.polesNear((int) Math.floor(end.x()), (int) Math.floor(end.y()), (int) Math.floor(end.z())));
         dropDependents(level, d, t -> contains(t.ropeDeps, id));
@@ -634,6 +637,7 @@ public final class TarpService {
             for (int id : ropeIds) {
                 Stability.Rope gone = d.s.removeRope(id);
                 if (gone == null) continue;
+                d.ropeValue.remove(id);
                 clearRopeCells(level, gone);
                 broadcast(level, Msg.S_ROPE_DEL, b -> {
                     b.writeVarInt(1);

@@ -14,6 +14,14 @@ public final class Spec {
         return Math.max(1, (int) Math.ceil(length / POLE_PER_ITEM - 1e-6));
     }
 
+    /** 노끈 아이템 하나가 잇는 길이(칸). 0.4.11: 지지대와 같게 2칸 (전엔 1칸). */
+    public static final double ROPE_PER_ITEM = 2;
+
+    /** 노끈 소모 개수: 길이(칸)를 ROPE_PER_ITEM 으로 나눠 올림. */
+    public static int ropeCost(double length) {
+        return Math.max(1, (int) Math.ceil(length / ROPE_PER_ITEM - 1e-6));
+    }
+
     /** 노끈 최대 길이(칸). */
     public static final double ROPE_MAX = 32;
     /** 유격 α (칸). */

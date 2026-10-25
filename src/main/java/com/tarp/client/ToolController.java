@@ -337,7 +337,8 @@ public final class ToolController {
                 if (start == null) return null;
                 if (target == null) return Component.translatable("tarp.hint.rope.end");
                 double len = start.dist(target.p());
-                return Component.translatable(len > Spec.ROPE_MAX ? "tarp.hint.rope.too_long" : "tarp.hint.rope.count", (int) Math.ceil(len - 1e-6), (int) Spec.ROPE_MAX);
+                if (len > Spec.ROPE_MAX) return Component.translatable("tarp.hint.rope.too_long", String.format("%.1f", len), (int) Spec.ROPE_MAX);
+                return Component.translatable("tarp.hint.rope.count", Spec.ropeCost(len), String.format("%.1f", len), (int) Spec.ROPE_MAX);
             }
             case TARP -> {
                 if (ties.isEmpty()) return null;

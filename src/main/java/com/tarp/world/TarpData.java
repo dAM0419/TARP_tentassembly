@@ -21,6 +21,17 @@ public final class TarpData extends SavedData {
         Integer v = poleValue.get(p.id());
         return v != null ? v : Spec.poleCost(p.a().dist(p.b()));
     }
+    /**
+     * 노끈 id → 들어간 아이템 수 (서버만, 0.4.11). 걷을 때 이만큼 돌려준다.
+     * 0.4.10 이하에서 친 노끈은 값이 없고, 그때 규칙(1칸에 1개)으로 돌려준다 (낸 만큼 돌려받게).
+     */
+    public final java.util.Map<Integer, Integer> ropeValue = new java.util.HashMap<>();
+
+    public int value(Stability.Rope r) {
+        Integer v = ropeValue.get(r.id());
+        return v != null ? v : (int) Math.ceil(r.a().dist(r.b()) - 1e-6);
+    }
+
     private int nextId = 1;
 
     public static TarpData get(ServerLevel level) {
@@ -45,6 +56,13 @@ public final class TarpData extends SavedData {
             vals[i++] = e.getValue();
         }
         tag.putIntArray("poleValues", vals);
+        int[] rv = new int[ropeValue.size() * 2];
+        i = 0;
+        for (var e : ropeValue.entrySet()) {
+            rv[i++] = e.getKey();
+            rv[i++] = e.getValue();
+        }
+        tag.putIntArray("ropeValues", rv);
         ListTag ropes = new ListTag();
         for (Stability.Rope r : s.ropes.values()) ropes.add(Codecs.rope(r));
         tag.put("ropes", ropes);
@@ -61,6 +79,8 @@ public final class TarpData extends SavedData {
         int[] vals = tag.getIntArray("poleValues");
         for (int i = 0; i + 1 < vals.length; i += 2) d.poleValue.put(vals[i], vals[i + 1]);
         for (Tag raw : tag.getList("ropes", Tag.TAG_COMPOUND)) d.s.addRope(Codecs.rope((CompoundTag) raw));
+        int[] rv = tag.getIntArray("ropeValues");
+        for (int i = 0; i + 1 < rv.length; i += 2) d.ropeValue.put(rv[i], rv[i + 1]);
         for (Tag raw : tag.getList("tarps", Tag.TAG_COMPOUND)) d.s.addTarp(Codecs.tarp((CompoundTag) raw));
         return d;
     }
